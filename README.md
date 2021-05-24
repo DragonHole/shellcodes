@@ -1,3 +1,9 @@
+# Quick reference 
+
+- [All architecture linux syscall table](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/constants/syscalls.md#x86-32_bit)
+
+- [i386 & x86-64 syscall/userspace call conventions](https://stackoverflow.com/questions/2535989/what-are-the-calling-conventions-for-unix-linux-system-calls-and-user-space-f)
+
 ### Byte ordering
 
 ![image](https://slideplayer.com/slide/9303999/28/images/9/Byte+ordering+function+calls+%282%2F6%29.jpg)
@@ -104,6 +110,24 @@ getString:
 \xeb\x0b\x31\xc0\x5b\x31\xc9\x31\xd2\xb0\x0b\xcd\x80\xe8\xf0\xff\xff\xff\x2f\x62\x69\x6e\x2f\x73\x68
 ```
 
+# Redirect execution techniques
+
+### 1.Overwrite EIP
+
+### 2.Overwrite function stub address in GOT
+
+# 'sneaking in shellcode' Techniques 
+
+### 1.set shellcode at an environment variable
+
+- then use the above two techniques to point to the environ
+
+### 2.store in input buffer
+
+### 3.store in parameter(above main's EBP)
+
+
+
 ## x86 Instructions 
 
 The instruction ['test'](https://stackoverflow.com/a/13064985)
@@ -147,7 +171,22 @@ $(echo -n -e "\x31\xc0\x50\x68\x2f") >> inputFile 在已有内容的后面添加
 
 - GCC aligned default 16 bytes 
 - 一旦local var >= 17，gcc就会分配32bytes
-- 
+
+# setuid 
+
+- some binaries have the setuid bit switched on, call them setuid executables. can see with ls -l
+
+- a setuid executable allows the user that runs the executable to have his effective uid changed to the owner of the executable.
+
+- temporary privilege escalation.
+
+- /bin 里面的binary都是setuid executable，他们的owner是root，一般用户能够执行但不能修改。/bin 里的binary之所以需要root权限是因为他们需要用一些只有root能用的syscall。
+
+[Real UID and effective UID](https://stackoverflow.com/questions/32455684/difference-between-real-user-id-effective-user-id-and-saved-user-id) 
+
+# trivia 
+
+- 有时候不知为啥要加;cat ```(python -c 'print 71 * "\x90" + "\x80\xde\xff\xff"';cat) | ./behemoth1```
 
 ## Vulnerability lists 
 
@@ -194,10 +233,14 @@ x就变成了3（“123”的长度）
 
 ### format string vulnerability - 继续～
 
-[超级详细解释](https://cand-f18.unexploitable.systems/l/lab06/W6L2.pdf)
+[详细解释](https://cand-f18.unexploitable.systems/l/lab06/W6L2.pdf)
+
+[实例best](https://axcheron.github.io/exploit-101-format-strings/)
+
+[100%全面，但比较长](https://cs155.stanford.edu/papers/formatstring-1.2.pdf)
 
 - 进程内地址任意读写为任意值
-- 如果要写入的值太大就得分开两次写，具体看pdf
+- 如果要写入的值太大就得分开两次写，其中有两种写的方法，第一种在"详细解释"里，第二种在“实例best”里，第二种比较好。第二种用到%hn,而第一种方法会不可避免往目标后的4字节写入垃圾。
 
 
 
@@ -238,5 +281,5 @@ before : ptrf() = 0x80486ff (0xffffd5f8)
 I guess you want to come to the hackedfunction...
 ```
 
-注意看argv[1]的开头，\xf8\xd5\xff\xff\xfa\xd5\xff\xff 是hackedfunction 地址的little endian版。后面的请看上面链接，这里再放一遍：[超级详细解释](https://cand-f18.unexploitable.systems/l/lab06/W6L2.pdf) 其中arbitrary write 那两页。
+注意看argv[1]的开头，\xf8\xd5\xff\xff\xfa\xd5\xff\xff 是要修改的目标地址(ptrf)的little endian版。后面的请看上面链接。
 
