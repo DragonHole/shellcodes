@@ -411,7 +411,7 @@ malloc(至少是gnu，64位) 最小分配单位是0x10, or 32 bytes. 前8byte �
 
 
 
-## Exploitation techniques
+## Heap exploitation techniques
 
 - 可以用 ```__malloc_hook``` 或者 ```__free_hook```等来改变控制流。
 
