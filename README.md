@@ -4,6 +4,18 @@
 
 - [i386 & x86-64 syscall/userspace call conventions](https://stackoverflow.com/questions/2535989/what-are-the-calling-conventions-for-unix-linux-system-calls-and-user-space-f)
 
+
+
+## ## GDB usages (pwndbg)
+
+dq &malloc-6 8     (dump 8 quadword, from malloc-6)
+
+u malloc                 (dump assembly instructions from the start of malloc)
+
+p malloc                 (print, 并尝试解析)
+
+ 
+
 ### Byte ordering
 
 ![image](https://slideplayer.com/slide/9303999/28/images/9/Byte+ordering+function+calls+%282%2F6%29.jpg)
@@ -55,7 +67,7 @@ just
 (*(void(*)()) shellcode)();
 ```
 
-```
+```assembly
 // nasm 
 global _start
 
@@ -82,7 +94,7 @@ ld -m elf_i386 example.o
 ./a.out
 ```
 
-```
+```assembly
 example2.asm (nasm) 25 bytes
 
 
@@ -286,7 +298,7 @@ I guess you want to come to the hackedfunction...
 
 # heap
 
-### Ptmalloc2
+## Malloc internals
 
 它是一个堆管理器，实现绝大部分堆操作。因为context switch的开销很大，频繁系统调用会严重影响性能。所以把这个任务交给用户态的ptmalloc2，是内核和程序之间的中间商。向内核批发进货，向程序零售分配。
 
@@ -325,9 +337,18 @@ I guess you want to come to the hackedfunction...
 2. ###### bin
    
    - malloc_chunk *
-   - 每个bin是一个包含可用chunk的链表
-   - 一共有128个普通bin，和多少多少个fastbin
-   - fastbin里的chunk inuse bit没有被关掉，仍显示inuse，这样就不会被自动与相邻的free chunk合并，因为开销不值得.
+   - 每个bin是一个包含可用chunk的链表, singlely linked, non-circular
+   - 一共有128个普通bin, 
+### Fastbins
+
+- 7个fastbin(by default), from 0x20 to 0x80
+- fastbin里的chunk inuse bit没有被关掉，仍显示inuse，这样就不会被自动与相邻的free chunk合并，因为开销不值得.
+- fastbin 类似一个栈，LIFO(last in first out)
+- malloc 在从top chunk切割分配之前，会先看看fast bin有没有合适的，有的话直接拿来用.
+
+### Unsorted bins
+
+for chunks 0x90 <= size <= ...
 
 3. ###### malloc_state/arena
    
@@ -352,7 +373,7 @@ An Allocated chunk
  +-----------------------+
 ```
 
-A free chunk
+A free chunk （except for fastbins）
 
 ```
  +-+-+-+-+-+-+-+-+-+-+-+-+ <-- Chunk start
@@ -386,8 +407,56 @@ a call to malloc returns address pointing to the FD of a free chunk, which is us
  '-----------'     '-----------'     '-------------'
 ```
 
-
-
 malloc(至少是gnu，64位) 最小分配单位是0x10, or 32 bytes. 前8byte 是chunk 的metadata。后24字节是user data.
 
 
+
+## Exploitation techniques
+
+- 可以用 ```__malloc_hook``` 或者 ```__free_hook```等来改变控制流。
+
+### house of force
+
+use buffer overflow to write to top chunk's size field, fool Malloc into believing it owns vm range beyond it actually owns。然后再malloc一次来达到任意读写的目的。
+
+### fastbin duplication
+
+基本上都会涵盖:
+
+- double free 
+
+- 伪造free chunk
+
+  - 伪造free chunk可以用pwndbg command 'find_fake_fast [target data addr] [fast bin size]' to find suitable chunk that also overlaps the target data. 需要运气够好才行咯。malloc不检查地址对齐，但是会检查size field.
+  - 在main_arena里伪造，因为有七个fast bin可以操控，操作空间也大些，但需要多次使用double free咯。
+
+  
+
+### One gadget 
+
+gadget指libc里有些相当于```execl("/bin/sh" ... )``` 的代码段，把控制流指向一个gadget就可以获得shell了。
+
+问题是每个gadget都有某些特定的限制，比如栈的某几个位置必须等于零，或者某些个参数寄存器必须等于0。因为这些值是execl的参数，也就是送给dash的参数，而dash很挑剔的，一旦参数不对就马上报错。
+
+sh，bash 其实是调用dash。
+
+
+
+### Unsafe unlink
+
+- requires heap overflow bug in user program, and 
+- for scenarios where u can edit the chunk after allocation
+- when #allocation is limited, otherwise we can just use house of force lol..
+
+free一个chunk的时候，Malloc会检查前后chunk是否空闲（先检查前一个，再检查后一个）（用prev in-use位判断），是的话就consolidate起来。紧邻的空闲chunk就叫做consolidation candidate（意 符合条件）。合并之前首先要把candidate从它的bin list 给移除（unlink）
+
+A normal unlinking process （把正在free的称作 chunk 'X'，consolidation candidate 称作 Y） - 
+
+。。。
+
+- gives a reflected write primitive, which requires two memory addresses (one of which is a hook) to be flagged as writable. 
+
+### Safe unlink
+
+- 主要目的就是bypass掉unlink过程中的fd和bk校验
+- requires a pointer to the allocated chunk. e.g could be a variable saved by the user program in the heap. 
